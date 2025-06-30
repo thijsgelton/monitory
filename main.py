@@ -53,7 +53,9 @@ def init_db():
     conn.close()
 
 
-def db_add_task(user_id: int, task_name: str, url: str, selector: str, initial_state: str):
+def db_add_task(
+    user_id: int, task_name: str, url: str, selector: str, initial_state: str
+):
     """Adds a task to the database."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -65,7 +67,9 @@ def db_add_task(user_id: int, task_name: str, url: str, selector: str, initial_s
     conn.close()
 
 
-def db_update_task(user_id: int, task_name: str, url: str, selector: str, initial_state: str):
+def db_update_task(
+    user_id: int, task_name: str, url: str, selector: str, initial_state: str
+):
     """Updates a task in the database."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -93,7 +97,9 @@ def db_delete_task(user_id: int, task_name: str):
     """Deletes a task from the database."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM tasks WHERE user_id = ? AND task_name = ?", (user_id, task_name))
+    cursor.execute(
+        "DELETE FROM tasks WHERE user_id = ? AND task_name = ?", (user_id, task_name)
+    )
     conn.commit()
     conn.close()
 
@@ -110,7 +116,7 @@ def load_tasks_from_db(application: Application):
     for row in rows:
         user_id = row["user_id"]
         task_name = row["task_name"]
-        if user_id not in user_
+        if user_id not in user_data:
             user_data[user_id] = {"tasks": {}}
         if user_id not in jobs:
             jobs[user_id] = {}
@@ -172,7 +178,7 @@ async def receive_task_name(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     user_id = update.message.from_user.id
     task_name = update.message.text
 
-    if user_id not in user_
+    if user_id not in user_data:
         user_data[user_id] = {"tasks": {}}
     if user_id not in jobs:
         jobs[user_id] = {}
@@ -338,12 +344,16 @@ async def receive_task_to_delete(
         if not jobs[user_id]:
             del jobs[user_id]
 
-    if user_id in user_data and task_name in user_data.get(user_id, {}).get("tasks", {}):
+    if user_id in user_data and task_name in user_data.get(user_id, {}).get(
+        "tasks", {}
+    ):
         del user_data[user_id]["tasks"][task_name]
         if not user_data[user_id]["tasks"]:
             del user_data[user_id]
         db_delete_task(user_id, task_name)
-        await update.message.reply_text(f"Task '{task_name}' has been stopped and deleted.")
+        await update.message.reply_text(
+            f"Task '{task_name}' has been stopped and deleted."
+        )
     else:
         await update.message.reply_text(f"Task '{task_name}' not found.")
 
@@ -444,7 +454,7 @@ async def receive_new_selector_and_update(
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels and ends the conversation."""
     user_id = update.message.from_user.id
-    if "task_name" in context.user_
+    if "task_name" in context.user_data:
         task_name = context.user_data["task_name"]
         # Clean up partially created task
         if (
@@ -455,7 +465,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             del user_data[user_id]["tasks"][task_name]
         del context.user_data["task_name"]
 
-    if "task_to_update" in context.user_
+    if "task_to_update" in context.user_data:
         del context.user_data["task_to_update"]
 
     await update.message.reply_text("Operation cancelled.")
@@ -469,7 +479,9 @@ async def check_website(context: ContextTypes.DEFAULT_TYPE) -> None:
     task_name = job_data["task_name"]
 
     if user_id not in user_data or task_name not in user_data[user_id]["tasks"]:
-        logger.warning(f"Task {task_name} for user {user_id} not found in user_data. Stopping job.")
+        logger.warning(
+            f"Task {task_name} for user {user_id} not found in user_data. Stopping job."
+        )
         context.job.schedule_removal()
         return
 
@@ -488,12 +500,11 @@ async def check_website(context: ContextTypes.DEFAULT_TYPE) -> None:
             if current_state != initial_state:
                 await context.bot.send_message(
                     chat_id=user_id,
-                    text=f"The content of task '{task_name}' has changed!\n"
-                    f"URL: {url}",
+                    text=f"The content of task '{task_name}' has changed!\nURL: {url}",
                 )
-                user_data[user_id]["tasks"][task_name][
-                    "initial_state"
-                ] = current_state  # Update the state
+                user_data[user_id]["tasks"][task_name]["initial_state"] = (
+                    current_state  # Update the state
+                )
                 db_update_task_state(user_id, task_name, current_state)
         else:
             logger.warning(
@@ -501,8 +512,9 @@ async def check_website(context: ContextTypes.DEFAULT_TYPE) -> None:
             )
 
     except Exception as e:
-        logger.error(f"Error checking website for user {user_id}, task '{task_name}': {e}")
-
+        logger.error(
+            f"Error checking website for user {user_id}, task '{task_name}': {e}"
+        )
 
 
 def main() -> None:
@@ -514,9 +526,13 @@ def main() -> None:
     add_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("add", add_task)],
         states={
-            TASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_task_name)],
+            TASK_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_task_name)
+            ],
             URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_url)],
-            SELECTOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_selector)],
+            SELECTOR: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_selector)
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         per_user=True,
