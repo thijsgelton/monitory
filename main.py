@@ -12,6 +12,9 @@ from telegram.ext import (
 )
 import requests
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Enable logging
 logging.basicConfig(
