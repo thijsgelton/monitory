@@ -1,5 +1,6 @@
 import logging
 import os
+import sqlite3
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -17,6 +18,108 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+DB_FILE = "tasks.db"
+
+
+def init_db():
+    """Initializes the database."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tasks (
+            user_id INTEGER,
+            task_name TEXT,
+            url TEXT,
+            selector TEXT,
+            initial_state TEXT,
+            PRIMARY KEY (user_id, task_name)
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def db_add_task(user_id: int, task_name: str, url: str, selector: str, initial_state: str):
+    """Adds a task to the database."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO tasks (user_id, task_name, url, selector, initial_state) VALUES (?, ?, ?, ?, ?)",
+        (user_id, task_name, url, selector, initial_state),
+    )
+    conn.commit()
+    conn.close()
+
+
+def db_update_task(user_id: int, task_name: str, url: str, selector: str, initial_state: str):
+    """Updates a task in the database."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE tasks SET url = ?, selector = ?, initial_state = ? WHERE user_id = ? AND task_name = ?",
+        (url, selector, initial_state, user_id, task_name),
+    )
+    conn.commit()
+    conn.close()
+
+
+def db_update_task_state(user_id: int, task_name: str, new_state: str):
+    """Updates the state of a task in the database."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE tasks SET initial_state = ? WHERE user_id = ? AND task_name = ?",
+        (new_state, user_id, task_name),
+    )
+    conn.commit()
+    conn.close()
+
+
+def db_delete_task(user_id: int, task_name: str):
+    """Deletes a task from the database."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM tasks WHERE user_id = ? AND task_name = ?", (user_id, task_name))
+    conn.commit()
+    conn.close()
+
+
+def load_tasks_from_db(application: Application):
+    """Loads tasks from the database and schedules jobs."""
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tasks")
+    rows = cursor.fetchall()
+    conn.close()
+
+    for row in rows:
+        user_id = row["user_id"]
+        task_name = row["task_name"]
+        if user_id not in user_data:
+            user_data[user_id] = {"tasks": {}}
+        if user_id not in jobs:
+            jobs[user_id] = {}
+
+        user_data[user_id]["tasks"][task_name] = {
+            "url": row["url"],
+            "selector": row["selector"],
+            "initial_state": row["initial_state"],
+        }
+
+        # Schedule the job
+        job = application.job_queue.run_repeating(
+            check_website,
+            interval=60,
+            first=0,
+            data={"user_id": user_id, "task_name": task_name},
+        )
+        jobs[user_id][task_name] = job
+        logger.info(f"Loaded and scheduled task '{task_name}' for user {user_id}")
+
 
 # Store user data and jobs in dictionaries
 user_data = {}
@@ -102,6 +205,14 @@ async def receive_selector(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text(message)
 
     if success:
+        task = user_data[user_id]["tasks"][task_name]
+        db_add_task(
+            user_id,
+            task_name,
+            task["url"],
+            task["selector"],
+            task["initial_state"],
+        )
         del context.user_data["task_name"]
         return ConversationHandler.END
     else:
@@ -219,6 +330,7 @@ async def receive_task_to_delete(
         del user_data[user_id]["tasks"][task_name]
         if not user_data[user_id]["tasks"]:
             del user_data[user_id]
+        db_delete_task(user_id, task_name)
         await update.message.reply_text(f"Task '{task_name}' has been stopped and deleted.")
     else:
         await update.message.reply_text(f"Task '{task_name}' not found.")
@@ -301,6 +413,16 @@ async def receive_new_selector_and_update(
     success, message = await setup_monitoring_task(context, user_id, task_name)
     await update.message.reply_text(f"Task '{task_name}' updated. {message}")
 
+    if success:
+        task = user_data[user_id]["tasks"][task_name]
+        db_update_task(
+            user_id,
+            task_name,
+            task["url"],
+            task["selector"],
+            task["initial_state"],
+        )
+
     del context.user_data["task_to_update"]
     return ConversationHandler.END
 
@@ -358,6 +480,7 @@ async def check_website(context: ContextTypes.DEFAULT_TYPE) -> None:
                 user_data[user_id]["tasks"][task_name][
                     "initial_state"
                 ] = current_state  # Update the state
+                db_update_task_state(user_id, task_name, current_state)
         else:
             logger.warning(
                 f"Element with selector '{selector}' no longer found on {url} for task '{task_name}'"
@@ -370,6 +493,7 @@ async def check_website(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     """Start the bot."""
+    init_db()
     application = Application.builder().token(os.getenv("TELEGRAM_BOT_TOKEN")).build()
 
     # Conversation handler for adding a task
@@ -422,6 +546,9 @@ def main() -> None:
     application.add_handler(add_conv_handler)
     application.add_handler(delete_conv_handler)
     application.add_handler(update_conv_handler)
+
+    # Load tasks from DB and schedule jobs
+    load_tasks_from_db(application)
 
     # Run the bot
     application.run_polling()
