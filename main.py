@@ -21,6 +21,17 @@ logger = logging.getLogger(__name__)
 
 DB_FILE = "tasks.db"
 
+CSS_SELECTOR_EXPLANATION = (
+    "Here's how to get the CSS selector using a desktop browser (like Chrome or Firefox):\n\n"
+    "1. Open the website URL.\n"
+    "2. Right-click on the specific item you want to track (e.g., a price, a status message).\n"
+    "3. Select 'Inspect' from the menu.\n"
+    "4. A developer panel will open with a line of code highlighted.\n"
+    "5. Right-click on that highlighted line.\n"
+    "6. Go to 'Copy' and then click 'Copy selector'.\n"
+    "7. Paste what you copied back into our chat."
+)
+
 
 def init_db():
     """Initializes the database."""
@@ -99,7 +110,7 @@ def load_tasks_from_db(application: Application):
     for row in rows:
         user_id = row["user_id"]
         task_name = row["task_name"]
-        if user_id not in user_data:
+        if user_id not in user_
             user_data[user_id] = {"tasks": {}}
         if user_id not in jobs:
             jobs[user_id] = {}
@@ -161,7 +172,7 @@ async def receive_task_name(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     user_id = update.message.from_user.id
     task_name = update.message.text
 
-    if user_id not in user_data:
+    if user_id not in user_
         user_data[user_id] = {"tasks": {}}
     if user_id not in jobs:
         jobs[user_id] = {}
@@ -189,7 +200,8 @@ async def receive_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     user_data[user_id]["tasks"][task_name]["url"] = url
 
     await update.message.reply_text(
-        "Thanks. Now, please provide the CSS selector for the element."
+        "Thanks. Now, please provide the CSS selector for the element.\n\n"
+        f"{CSS_SELECTOR_EXPLANATION}"
     )
     return SELECTOR
 
@@ -388,7 +400,9 @@ async def receive_new_url(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     old_selector = user_data[user_id]["tasks"][task_name]["selector"]
     await update.message.reply_text(
-        f"The current selector is: {old_selector}\nPlease send the new selector, or send 'skip' to keep it."
+        f"The current selector is: `{old_selector}`\n\n"
+        "Please send the new selector, or send 'skip' to keep it.\n\n"
+        f"{CSS_SELECTOR_EXPLANATION}"
     )
     return UPDATE_SELECTOR
 
@@ -430,7 +444,7 @@ async def receive_new_selector_and_update(
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels and ends the conversation."""
     user_id = update.message.from_user.id
-    if "task_name" in context.user_data:
+    if "task_name" in context.user_
         task_name = context.user_data["task_name"]
         # Clean up partially created task
         if (
@@ -441,7 +455,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             del user_data[user_id]["tasks"][task_name]
         del context.user_data["task_name"]
 
-    if "task_to_update" in context.user_data:
+    if "task_to_update" in context.user_
         del context.user_data["task_to_update"]
 
     await update.message.reply_text("Operation cancelled.")
